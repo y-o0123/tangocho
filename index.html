@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>単語帳 — 忘却曲線で覚える英単語アプリ</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#ffffff; --ink:#1f2937; --sub:#6b7280;
+    --accent:#2f80ed; --border:#e5e7eb;
+    --again:#e74c3c; --hard:#e67e22; --good:#27ae60; --easy:#2f80ed;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif; background:var(--bg); color:var(--ink); min-height:100vh;}
+  header{background:linear-gradient(120deg,#1b3a6b,#2f80ed); color:#fff; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;}
+  header h1{font-size:1.15rem; font-weight:600;}
+  nav{display:flex; gap:6px;}
+  nav button{background:rgba(255,255,255,.15); border:none; color:#fff; padding:8px 16px; border-radius:8px; font-size:.95rem; cursor:pointer;}
+  nav button.active{background:#fff; color:#1b3a6b; font-weight:600;}
+  main{max-width:860px; margin:0 auto; padding:20px 16px 60px;}
+  .view{display:none;}
+  .view.active{display:block;}
+  .panel{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:22px; box-shadow:0 1px 3px rgba(0,0,0,.06);}
+
+  /* ===== 学習ビュー ===== */
+  .stats{display:flex; gap:18px; justify-content:center; margin-bottom:16px; font-size:.92rem; color:var(--sub);}
+  .stats b{color:var(--ink); font-size:1.05rem;}
+  .study-card{min-height:300px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; text-align:center; padding:30px 20px;}
+  .study-front{font-size:1.5rem; line-height:1.6;}
+  .study-back{font-size:1.3rem; line-height:1.6; color:#0f5132;}
+  .study-divider{width:80%; border-top:1px solid var(--border);}
+  .study-card img{max-width:100%; max-height:280px; border-radius:10px;}
+  .show-answer{background:var(--accent); color:#fff; border:none; padding:12px 40px; border-radius:10px; font-size:1rem; cursor:pointer;}
+  .rating-row{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:8px;}
+  .rating-btn{border:none; border-radius:10px; padding:10px 18px; color:#fff; cursor:pointer; min-width:96px;}
+  .rating-btn small{display:block; font-size:.75rem; opacity:.9; margin-bottom:2px;}
+  .rating-btn span{font-size:.95rem; font-weight:600;}
+  .rb-again{background:var(--again);} .rb-hard{background:var(--hard);}
+  .rb-good{background:var(--good);} .rb-easy{background:var(--easy);}
+  .done-msg{text-align:center; padding:60px 20px; color:var(--sub); font-size:1.05rem; line-height:2;}
+  .kbd-hint{text-align:center; color:var(--sub); font-size:.78rem; margin-top:14px;}
+
+  /* ===== 追加・編集ビュー ===== */
+  .form-group{margin-bottom:16px;}
+  .form-group label{display:block; font-weight:600; font-size:.88rem; margin-bottom:6px; color:var(--sub);}
+  .editor-toolbar{display:flex; gap:6px; margin-bottom:6px;}
+  .editor-toolbar button{border:1px solid var(--border); background:#fff; border-radius:6px; width:36px; height:30px; cursor:pointer; font-size:.9rem;}
+  .editor-toolbar button:hover{background:#f0f2f5;}
+  .rich-editor{width:100%; min-height:70px; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:1rem; background:#fff; line-height:1.6;}
+  .rich-editor:focus{outline:2px solid var(--accent); outline-offset:-1px;}
+  .rich-editor:empty::before{content:attr(data-placeholder); color:#9ca3af; pointer-events:none;}
+  .img-drop{border:2px dashed var(--border); border-radius:10px; padding:18px; text-align:center; color:var(--sub); font-size:.88rem; cursor:pointer;}
+  .img-drop.has-img{padding:10px;}
+  .img-drop img{max-width:100%; max-height:220px; border-radius:8px;}
+  .form-actions{display:flex; gap:10px; margin-top:18px;}
+  .btn-primary{background:var(--accent); color:#fff; border:none; padding:11px 30px; border-radius:9px; font-size:.98rem; cursor:pointer;}
+  .btn-ghost{background:none; border:1px solid var(--border); color:var(--sub); padding:11px 20px; border-radius:9px; cursor:pointer;}
+  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#1f2937; color:#fff; padding:10px 22px; border-radius:9px; font-size:.9rem; opacity:0; transition:opacity .3s; pointer-events:none;}
+  .toast.show{opacity:1;}
+
+  /* ===== 一覧ビュー ===== */
+  .list-tools{display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center;}
+  .list-tools input[type=text]{flex:1; min-width:180px; border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:.95rem;}
+  .card-row{display:flex; align-items:center; gap:12px; padding:12px 6px; border-bottom:1px solid var(--border);}
+  .card-row:last-child{border-bottom:none;}
+  .card-thumb{width:52px; height:52px; object-fit:cover; border-radius:8px; flex-shrink:0; background:#eee;}
+  .card-texts{flex:1; min-width:0;}
+  .card-texts .f{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .card-texts .b{color:var(--sub); font-size:.88rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .card-meta{font-size:.78rem; color:var(--sub); text-align:right; flex-shrink:0; line-height:1.5;}
+  .badge{display:inline-block; padding:1px 8px; border-radius:20px; font-size:.72rem; color:#fff;}
+  .bg-new{background:#8e44ad;} .bg-learning{background:#e67e22;} .bg-review{background:#27ae60;} .bg-relearning{background:#e74c3c;}
+  .row-btn{border:none; background:#f0f2f5; border-radius:7px; padding:7px 10px; cursor:pointer; font-size:.82rem;}
+  .empty{color:var(--sub); text-align:center; padding:40px 0;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📘 単語帳 <span style="font-weight:400;font-size:.8rem;opacity:.8;">忘却曲線で覚える</span></h1>
+  <nav>
+    <button data-view="study" class="active">学習</button>
+    <button data-view="add">追加</button>
+    <button data-view="list">一覧</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 学習 -->
+  <section id="view-study" class="view active">
+    <div class="stats">
+      <span>新規 <b id="stat-new">0</b></span>
+      <span>学習中 <b id="stat-learning">0</b></span>
+      <span>復習 <b id="stat-review">0</b></span>
+    </div>
+    <div class="panel" id="study-panel"></div>
+    <p class="kbd-hint">キーボード: Space＝解答を表示 ／ 1＝もう一度 2＝難しい 3＝正解 4＝簡単</p>
+  </section>
+
+  <!-- 追加・編集 -->
+  <section id="view-add" class="view">
+    <div class="panel">
+      <h2 id="form-title" style="font-size:1.05rem; margin-bottom:18px;">カードを追加</h2>
+      <div class="form-group">
+        <label>表面（英単語・例文）</label>
+        <div class="editor-toolbar" data-target="in-front">
+          <button type="button" data-cmd="bold" title="太字 (Ctrl+B)"><b>B</b></button>
+          <button type="button" data-cmd="underline" title="下線 (Ctrl+U)"><u>U</u></button>
+        </div>
+        <div class="rich-editor" id="in-front" contenteditable="true" data-placeholder="例: He has a pain in his chest."></div>
+      </div>
+      <div class="form-group">
+        <label>裏面（意味・解説）</label>
+        <div class="editor-toolbar" data-target="in-back">
+          <button type="button" data-cmd="bold" title="太字 (Ctrl+B)"><b>B</b></button>
+          <button type="button" data-cmd="underline" title="下線 (Ctrl+U)"><u>U</u></button>
+        </div>
+        <div class="rich-editor" id="in-back" contenteditable="true" data-placeholder="例: chest = 胸"></div>
+      </div>
+      <div class="form-group">
+        <label>画像（任意） — クリックして選択、またはこのページに Ctrl+V で貼り付け</label>
+        <div class="img-drop" id="img-drop">📷 画像を追加</div>
+        <input type="file" id="in-image" accept="image/*" hidden>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" id="btn-save">保存</button>
+        <button class="btn-ghost" id="btn-cancel" style="display:none;">キャンセル</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 一覧 -->
+  <section id="view-list" class="view">
+    <div class="panel">
+      <div class="list-tools">
+        <input type="text" id="search" placeholder="🔍 カードを検索...">
+        <button class="row-btn" id="btn-export">エクスポート</button>
+        <button class="row-btn" id="btn-import">インポート</button>
+        <input type="file" id="import-file" accept=".json" hidden>
+      </div>
+      <div id="card-list"></div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const MIN = 60e3, DAY = 86400e3;
+const LEARNING_STEPS = [1 * MIN, 10 * MIN];   // Ankiの既定ステップ: 1分 → 10分
+const GRADUATE_DAYS = 1, EASY_DAYS = 3;
+
+/* ---------- IndexedDB ---------- */
+let db;
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open("tangocho", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("cards", { keyPath: "id" });
+    req.onsuccess = () => { db = req.result; res(); };
+    req.onerror = () => rej(req.error);
+  });
+}
+function tx(mode) { return db.transaction("cards", mode).objectStore("cards"); }
+function getAllCards() {
+  return new Promise(res => { const r = tx("readonly").getAll(); r.onsuccess = () => res(r.result); });
+}
+function putCard(c) {
+  return new Promise(res => { tx("readwrite").put(c).onsuccess = () => res(); });
+}
+function removeCard(id) {
+  return new Promise(res => { tx("readwrite").delete(id).onsuccess = () => res(); });
+}
+
+/* ---------- スケジューラ（SM-2 / Anki方式） ---------- */
+function schedule(orig, rating, now) {
+  const c = { ...orig };
+  c.ease = c.ease || 2.5;
+  c.reps = (c.reps || 0) + 1;
+
+  if (c.state === "review") {
+    if (rating === "again") {          // 失念 → 再学習へ。間隔は半分に、易しさ低下
+      c.lapses = (c.lapses || 0) + 1;
+      c.state = "relearning";
+      c.ease = Math.max(1.3, c.ease - 0.2);
+      c.interval = Math.max(1, Math.round(c.interval * 0.5));
+      c.due = now + 10 * MIN;
+    } else if (rating === "hard") {
+      c.ease = Math.max(1.3, c.ease - 0.15);
+      c.interval = Math.max(c.interval + 1, Math.round(c.interval * 1.2));
+      c.due = now + c.interval * DAY;
+    } else if (rating === "good") {
+      c.interval = Math.max(c.interval + 1, Math.round(c.interval * c.ease));
+      c.due = now + c.interval * DAY;
+    } else {                           // easy
+      c.ease += 0.15;
+      c.interval = Math.max(c.interval + 1, Math.round(c.interval * c.ease * 1.3));
+      c.due = now + c.interval * DAY;
+    }
+  } else if (c.state === "relearning") {
+    if (rating === "again")      { c.due = now + LEARNING_STEPS[0]; }
+    else if (rating === "hard")  { c.due = now + 10 * MIN; }
+    else { // good / easy → 復習に復帰
+      c.state = "review";
+      c.due = now + c.interval * DAY;
+    }
+  } else { // new / learning
+    const step = c.state === "learning" ? (c.step || 0) : 0;
+    if (rating === "again") {
+      c.state = "learning"; c.step = 0; c.due = now + LEARNING_STEPS[0];
+    } else if (rating === "hard") {
+      c.state = "learning"; c.step = step;
+      c.due = now + (step === 0 ? 6 * MIN : LEARNING_STEPS[step]);
+    } else if (rating === "good") {
+      if (c.state !== "learning") {            // 新規カード初回 → 次ステップ(10分)
+        c.state = "learning"; c.step = 1; c.due = now + LEARNING_STEPS[1];
+      } else if (step + 1 < LEARNING_STEPS.length) {
+        c.step = step + 1; c.due = now + LEARNING_STEPS[step + 1];
+      } else {                                  // 卒業 → 1日後
+        c.state = "review"; c.interval = GRADUATE_DAYS; c.due = now + GRADUATE_DAYS * DAY;
+      }
+    } else {                                    // easy → 即卒業 3日後
+      c.state = "review"; c.interval = EASY_DAYS; c.due = now + EASY_DAYS * DAY;
+    }
+  }
+  return c;
+}
+
+function fmtDelta(ms) {
+  const m = ms / MIN, d = ms / DAY;
+  if (m < 1.05) return "<1分";
+  if (m < 60)   return "<" + Math.round(m) + "分";
+  if (d < 1.05) return "<1日";
+  if (d < 31)   return Math.round(d) + "日";
+  if (d < 365)  return (d / 30.4).toFixed(1).replace(/\.0$/, "") + "ヶ月";
+  return (d / 365).toFixed(1).replace(/\.0$/, "") + "年";
+}
+function previewLabel(card, rating) {
+  const now = Date.now();
+  return fmtDelta(Math.max(0, schedule(card, rating, now).due - now));
+}
+
+/* ---------- 状態 ---------- */
+let cards = [];
+let currentCard = null;
+let editingId = null;
+let pendingImage = null;
+
+const $ = s => document.querySelector(s);
+
+/* ---------- ナビゲーション ---------- */
+document.querySelectorAll("nav button").forEach(btn => {
+  btn.addEventListener("click", () => showView(btn.dataset.view));
+});
+function showView(name) {
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.view === name));
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
+  if (name === "study") renderStudy();
+  if (name === "list")  renderList();
+  if (name === "add" && !editingId) resetForm();
+}
+
+/* ---------- 学習 ---------- */
+function buildQueue() {
+  const now = Date.now();
+  const due = cards.filter(c => (c.due || 0) <= now);
+  const order = { learning: 0, relearning: 0, review: 1, new: 2 };
+  due.sort((a, b) => (order[a.state] - order[b.state]) || ((a.due || 0) - (b.due || 0)));
+  return due;
+}
+function updateStats() {
+  const now = Date.now();
+  const d = cards.filter(c => (c.due || 0) <= now);
+  $("#stat-new").textContent      = d.filter(c => c.state === "new").length;
+  $("#stat-learning").textContent = d.filter(c => c.state === "learning" || c.state === "relearning").length;
+  $("#stat-review").textContent   = d.filter(c => c.state === "review").length;
+}
+function renderStudy() {
+  updateStats();
+  const queue = buildQueue();
+  const panel = $("#study-panel");
+  currentCard = queue[0] || null;
+
+  if (!currentCard) {
+    const future = cards.filter(c => c.due).sort((a, b) => a.due - b.due)[0];
+    let msg = cards.length === 0
+      ? "カードがまだありません。<br>「追加」タブから最初のカードを作りましょう 📝"
+      : "🎉 今の学習はすべて完了しました！";
+    if (future && cards.length > 0) {
+      msg += "<br><span style='font-size:.88rem;'>次の復習: " +
+             new Date(future.due).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) +
+             "（あと " + fmtDelta(future.due - Date.now()) + "）</span>";
+    }
+    panel.innerHTML = "<div class='done-msg'>" + msg + "</div>";
+    return;
+  }
+  const c = currentCard;
+  panel.innerHTML =
+    "<div class='study-card'>" +
+      "<div class='study-front'>" + c.front + "</div>" +
+      "<div id='answer-area' style='display:none; width:100%;'>" +
+        "<div class='study-divider' style='margin:14px auto;'></div>" +
+        "<div class='study-back'>" + c.back + "</div>" +
+        (c.image ? "<div style='margin-top:14px;'><img src='" + c.image + "'></div>" : "") +
+        "<div class='rating-row' style='margin-top:22px;'>" +
+          rateBtn("again", "もう一度") + rateBtn("hard", "難しい") +
+          rateBtn("good", "正解")     + rateBtn("easy", "簡単") +
+        "</div>" +
+      "</div>" +
+      "<button class='show-answer' id='btn-show'>解答を表示</button>" +
+    "</div>";
+  $("#btn-show").addEventListener("click", revealAnswer);
+  panel.querySelectorAll(".rating-btn").forEach(b =>
+    b.addEventListener("click", () => rate(b.dataset.rating)));
+}
+function rateBtn(rating, label) {
+  return "<button class='rating-btn rb-" + rating + "' data-rating='" + rating + "'>" +
+         "<small>" + previewLabel(currentCard, rating) + "</small><span>" + label + "</span></button>";
+}
+function revealAnswer() {
+  const a = $("#answer-area");
+  if (a) { a.style.display = "block"; $("#btn-show").style.display = "none"; }
+}
+async function rate(rating) {
+  if (!currentCard) return;
+  const updated = schedule(currentCard, rating, Date.now());
+  await putCard(updated);
+  const i = cards.findIndex(c => c.id === updated.id);
+  cards[i] = updated;
+  renderStudy();
+}
+
+/* キーボードショートカット */
+document.addEventListener("keydown", e => {
+  if (!$("#view-study").classList.contains("active") || !currentCard) return;
+  if (e.target.matches("textarea, input") || e.target.isContentEditable) return;
+  const answerShown = $("#answer-area") && $("#answer-area").style.display !== "none";
+  if (e.code === "Space" && !answerShown) { e.preventDefault(); revealAnswer(); }
+  if (answerShown) {
+    const map = { Digit1: "again", Digit2: "hard", Digit3: "good", Digit4: "easy" };
+    if (map[e.code]) rate(map[e.code]);
+  }
+});
+
+/* ---------- カード追加・編集 ---------- */
+/* 太字・下線ツールバー（Ctrl+B / Ctrl+U はブラウザ標準で動作） */
+document.querySelectorAll(".editor-toolbar button").forEach(btn => {
+  btn.addEventListener("mousedown", e => e.preventDefault()); // 選択範囲を保持
+  btn.addEventListener("click", () => {
+    document.getElementById(btn.parentElement.dataset.target).focus();
+    document.execCommand(btn.dataset.cmd);
+  });
+});
+
+/* 保存するHTMLを b/strong/u/i/em/br/div/span のみに制限 */
+function sanitize(html) {
+  const root = document.createElement("div");
+  root.innerHTML = html;
+  root.querySelectorAll("script,style").forEach(n => n.remove());
+  const allowed = ["B", "STRONG", "U", "I", "EM", "BR", "DIV", "SPAN"];
+  (function walk(el) {
+    [...el.children].forEach(ch => {
+      walk(ch);
+      if (!allowed.includes(ch.tagName)) { ch.replaceWith(...ch.childNodes); }
+      else { [...ch.attributes].forEach(a => ch.removeAttribute(a.name)); }
+    });
+  })(root);
+  return root.innerHTML;
+}
+function textOf(html) {
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  return d.textContent.trim();
+}
+
+$("#img-drop").addEventListener("click", () => $("#in-image").click());
+$("#in-image").addEventListener("change", e => {
+  if (e.target.files[0]) loadImage(e.target.files[0]);
+});
+document.addEventListener("paste", e => {
+  if (!$("#view-add").classList.contains("active")) return;
+  const item = [...e.clipboardData.items].find(i => i.type.startsWith("image/"));
+  if (item) { e.preventDefault(); loadImage(item.getAsFile()); }
+});
+function loadImage(file) {
+  const img = new Image();
+  img.onload = () => {
+    // 保存容量を抑えるため長辺800pxに縮小してJPEG化
+    const scale = Math.min(1, 800 / Math.max(img.width, img.height));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(img.width * scale);
+    cv.height = Math.round(img.height * scale);
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    pendingImage = cv.toDataURL("image/jpeg", 0.82);
+    $("#img-drop").classList.add("has-img");
+    $("#img-drop").innerHTML = "<img src='" + pendingImage + "'><div style='font-size:.78rem; margin-top:6px;'>クリックで別の画像に変更</div>";
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(file);
+}
+$("#btn-save").addEventListener("click", async () => {
+  const front = sanitize($("#in-front").innerHTML);
+  const back  = sanitize($("#in-back").innerHTML);
+  if (!textOf(front) || !textOf(back)) { toast("表面と裏面を入力してください"); return; }
+
+  if (editingId) {
+    const i = cards.findIndex(c => c.id === editingId);
+    const updated = { ...cards[i], front, back, image: pendingImage, v2: true };
+    await putCard(updated); cards[i] = updated;
+    toast("カードを更新しました");
+    editingId = null;
+    showView("list");
+  } else {
+    const card = {
+      id: crypto.randomUUID(), front, back, image: pendingImage, v2: true,
+      state: "new", step: 0, ease: 2.5, interval: 0,
+      due: Date.now(), reps: 0, lapses: 0, created: Date.now()
+    };
+    await putCard(card); cards.push(card);
+    toast("カードを追加しました");
+    resetForm();
+    $("#in-front").focus();
+  }
+});
+$("#btn-cancel").addEventListener("click", () => { editingId = null; resetForm(); showView("list"); });
+function resetForm() {
+  $("#form-title").textContent = "カードを追加";
+  $("#in-front").innerHTML = ""; $("#in-back").innerHTML = "";
+  pendingImage = null;
+  $("#img-drop").classList.remove("has-img");
+  $("#img-drop").innerHTML = "📷 画像を追加";
+  $("#in-image").value = "";
+  $("#btn-cancel").style.display = "none";
+}
+function editCard(id) {
+  const c = cards.find(c => c.id === id);
+  editingId = id;
+  showView("add");
+  $("#form-title").textContent = "カードを編集";
+  $("#in-front").innerHTML = c.front; $("#in-back").innerHTML = c.back;
+  pendingImage = c.image || null;
+  if (c.image) {
+    $("#img-drop").classList.add("has-img");
+    $("#img-drop").innerHTML = "<img src='" + c.image + "'><div style='font-size:.78rem; margin-top:6px;'>クリックで別の画像に変更</div>";
+  }
+  $("#btn-cancel").style.display = "inline-block";
+}
+
+/* ---------- 一覧 ---------- */
+$("#search").addEventListener("input", renderList);
+function renderList() {
+  const q = $("#search").value.trim().toLowerCase();
+  const list = $("#card-list");
+  const shown = cards
+    .filter(c => !q || textOf(c.front).toLowerCase().includes(q) || textOf(c.back).toLowerCase().includes(q))
+    .sort((a, b) => b.created - a.created);
+  if (shown.length === 0) {
+    list.innerHTML = "<div class='empty'>" + (cards.length ? "該当するカードがありません" : "カードがまだありません") + "</div>";
+    return;
+  }
+  const stateJa = { new: "新規", learning: "学習中", review: "復習", relearning: "再学習" };
+  list.innerHTML = shown.map(c =>
+    "<div class='card-row'>" +
+      (c.image ? "<img class='card-thumb' src='" + c.image + "'>" : "<div class='card-thumb'></div>") +
+      "<div class='card-texts'><div class='f'>" + c.front + "</div><div class='b'>" + c.back + "</div></div>" +
+      "<div class='card-meta'><span class='badge bg-" + c.state + "'>" + stateJa[c.state] + "</span><br>" +
+        (c.due ? "次回: " + new Date(c.due).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }) : "") + "</div>" +
+      "<button class='row-btn' onclick='editCard(\"" + c.id + "\")'>編集</button>" +
+      "<button class='row-btn' onclick='delCard(\"" + c.id + "\")'>削除</button>" +
+    "</div>").join("");
+}
+async function delCard(id) {
+  if (!confirm("このカードを削除しますか？")) return;
+  await removeCard(id);
+  cards = cards.filter(c => c.id !== id);
+  renderList();
+  toast("削除しました");
+}
+
+/* ---------- バックアップ ---------- */
+$("#btn-export").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(cards, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "単語帳バックアップ_" + new Date().toISOString().slice(0, 10) + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$("#btn-import").addEventListener("click", () => $("#import-file").click());
+$("#import-file").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const imported = JSON.parse(await file.text());
+    if (!Array.isArray(imported)) throw new Error();
+    let added = 0;
+    for (const c of imported) {
+      if (!c.id || !c.front) continue;
+      if (!c.v2) { c.front = esc(c.front); c.back = esc(c.back); c.v2 = true; } // 旧形式の変換
+      if (!cards.some(x => x.id === c.id)) { await putCard(c); cards.push(c); added++; }
+    }
+    toast(added + " 件のカードを取り込みました");
+    renderList();
+  } catch { toast("読み込みに失敗しました（JSON形式のバックアップを選んでください）"); }
+  e.target.value = "";
+});
+
+/* ---------- ユーティリティ ---------- */
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, m =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])
+  ).replace(/\n/g, "<br>");
+}
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+/* ---------- 起動 ---------- */
+openDB().then(async () => {
+  cards = await getAllCards();
+  // 旧形式（プレーンテキスト）のカードをHTML形式に変換
+  for (const c of cards) {
+    if (!c.v2) { c.front = esc(c.front); c.back = esc(c.back); c.v2 = true; await putCard(c); }
+  }
+  renderStudy();
+});
+</script>
+</body>
+</html>
