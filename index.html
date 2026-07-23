@@ -28,6 +28,11 @@
   .study-card{min-height:300px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; text-align:center; padding:30px 20px;}
   .study-front{font-size:1.5rem; line-height:1.6;}
   .study-back{font-size:1.3rem; line-height:1.6; color:#0f5132;}
+  .speak-row{display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;}
+  .speak-btn{background:none; border:1px solid var(--border); color:var(--accent); border-radius:50%; width:36px; height:36px; font-size:1.05rem; cursor:pointer; flex-shrink:0;}
+  .speak-btn:hover{background:#eef4fd;}
+  .speak-btn:disabled{opacity:.4; cursor:default;}
+  .speak-btn.inline{border-radius:8px; width:auto; padding:0 10px; height:30px; font-size:.9rem;}
   .study-divider{width:80%; border-top:1px solid var(--border);}
   .study-card img{max-width:100%; max-height:280px; border-radius:10px;}
   .show-answer{background:var(--accent); color:#fff; border:none; padding:12px 40px; border-radius:10px; font-size:1rem; cursor:pointer;}
@@ -106,6 +111,7 @@
         <div class="editor-toolbar" data-target="in-front">
           <button type="button" data-cmd="bold" title="太字 (Ctrl+B)"><b>B</b></button>
           <button type="button" data-cmd="underline" title="下線 (Ctrl+U)"><u>U</u></button>
+          <button type="button" class="speak-btn inline" id="btn-speak-editor" title="発音を確認">🔊 試聴</button>
         </div>
         <div class="rich-editor" id="in-front" contenteditable="true" data-placeholder="例: He has a pain in his chest."></div>
       </div>
@@ -297,7 +303,10 @@ function renderStudy() {
   const c = currentCard;
   panel.innerHTML =
     "<div class='study-card'>" +
-      "<div class='study-front'>" + c.front + "</div>" +
+      "<div class='speak-row'>" +
+        "<div class='study-front'>" + c.front + "</div>" +
+        "<button class='speak-btn' id='btn-speak-front' title='読み上げ'>🔊</button>" +
+      "</div>" +
       "<div id='answer-area' style='display:none; width:100%;'>" +
         "<div class='study-divider' style='margin:14px auto;'></div>" +
         "<div class='study-back'>" + c.back + "</div>" +
@@ -310,6 +319,7 @@ function renderStudy() {
       "<button class='show-answer' id='btn-show'>解答を表示</button>" +
     "</div>";
   $("#btn-show").addEventListener("click", revealAnswer);
+  $("#btn-speak-front").addEventListener("click", () => speak(textOf(c.front)));
   panel.querySelectorAll(".rating-btn").forEach(b =>
     b.addEventListener("click", () => rate(b.dataset.rating)));
 }
@@ -344,13 +354,14 @@ document.addEventListener("keydown", e => {
 
 /* ---------- カード追加・編集 ---------- */
 /* 太字・下線ツールバー（Ctrl+B / Ctrl+U はブラウザ標準で動作） */
-document.querySelectorAll(".editor-toolbar button").forEach(btn => {
+document.querySelectorAll(".editor-toolbar button[data-cmd]").forEach(btn => {
   btn.addEventListener("mousedown", e => e.preventDefault()); // 選択範囲を保持
   btn.addEventListener("click", () => {
     document.getElementById(btn.parentElement.dataset.target).focus();
     document.execCommand(btn.dataset.cmd);
   });
 });
+$("#btn-speak-editor").addEventListener("click", () => speak(textOf($("#in-front").innerHTML)));
 
 /* 保存するHTMLを b/strong/u/i/em/br/div/span のみに制限 */
 function sanitize(html) {
@@ -504,6 +515,29 @@ $("#import-file").addEventListener("change", async e => {
   } catch { toast("読み込みに失敗しました（JSON形式のバックアップを選んでください）"); }
   e.target.value = "";
 });
+
+/* ---------- 読み上げ（Web Speech API） ---------- */
+let ttsVoices = [];
+function loadVoices() { ttsVoices = speechSynthesis.getVoices(); }
+if ("speechSynthesis" in window) {
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+}
+function pickEnglishVoice() {
+  return ttsVoices.find(v => v.lang === "en-US") ||
+         ttsVoices.find(v => v.lang && v.lang.startsWith("en")) || null;
+}
+function speak(text) {
+  if (!text) return;
+  if (!("speechSynthesis" in window)) { toast("この端末は読み上げに対応していません"); return; }
+  speechSynthesis.cancel(); // 再生中なら止めてから読み直す
+  const u = new SpeechSynthesisUtterance(text);
+  const voice = pickEnglishVoice();
+  u.lang = voice ? voice.lang : "en-US";
+  if (voice) u.voice = voice;
+  u.rate = 0.95;
+  speechSynthesis.speak(u);
+}
 
 /* ---------- ユーティリティ ---------- */
 function esc(s) {
