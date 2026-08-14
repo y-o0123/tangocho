@@ -48,9 +48,13 @@
   /* ===== 追加・編集ビュー ===== */
   .form-group{margin-bottom:16px;}
   .form-group label{display:block; font-weight:600; font-size:.88rem; margin-bottom:6px; color:var(--sub);}
-  .editor-toolbar{display:flex; gap:6px; margin-bottom:6px;}
+  .editor-toolbar{display:flex; gap:6px; margin-bottom:6px; align-items:center;}
   .editor-toolbar button{border:1px solid var(--border); background:#fff; border-radius:6px; width:36px; height:30px; cursor:pointer; font-size:.9rem;}
   .editor-toolbar button:hover{background:#f0f2f5;}
+  .editor-toolbar button:disabled{opacity:.35; cursor:default;}
+  .mic-btn{width:auto !important; padding:0 10px;}
+  .mic-btn.recording{background:#fdecea; border-color:var(--again); color:var(--again); animation:mic-pulse 1s infinite;}
+  @keyframes mic-pulse{0%,100%{opacity:1;} 50%{opacity:.55;}}
   .rich-editor{width:100%; min-height:70px; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:1rem; background:#fff; line-height:1.6;}
   .rich-editor:focus{outline:2px solid var(--accent); outline-offset:-1px;}
   .rich-editor:empty::before{content:attr(data-placeholder); color:#9ca3af; pointer-events:none;}
@@ -111,6 +115,7 @@
         <div class="editor-toolbar" data-target="in-front">
           <button type="button" data-cmd="bold" title="太字 (Ctrl+B)"><b>B</b></button>
           <button type="button" data-cmd="underline" title="下線 (Ctrl+U)"><u>U</u></button>
+          <button type="button" class="mic-btn" id="btn-mic-front" data-lang="en-US" title="音声入力（英語）">🎤 英語入力</button>
           <button type="button" class="speak-btn inline" id="btn-speak-editor" title="発音を確認">🔊 試聴</button>
         </div>
         <div class="rich-editor" id="in-front" contenteditable="true" data-placeholder="例: He has a pain in his chest."></div>
@@ -120,6 +125,7 @@
         <div class="editor-toolbar" data-target="in-back">
           <button type="button" data-cmd="bold" title="太字 (Ctrl+B)"><b>B</b></button>
           <button type="button" data-cmd="underline" title="下線 (Ctrl+U)"><u>U</u></button>
+          <button type="button" class="mic-btn" id="btn-mic-back" data-lang="ja-JP" title="音声入力（日本語）">🎤 日本語入力</button>
         </div>
         <div class="rich-editor" id="in-back" contenteditable="true" data-placeholder="例: chest = 胸"></div>
       </div>
@@ -362,6 +368,54 @@ document.querySelectorAll(".editor-toolbar button[data-cmd]").forEach(btn => {
   });
 });
 $("#btn-speak-editor").addEventListener("click", () => speak(textOf($("#in-front").innerHTML)));
+
+/* 音声入力（Web Speech API の音声認識） */
+function setupDictation(btn) {
+  const targetId = btn.closest(".editor-toolbar").dataset.target;
+  const label = btn.textContent;
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) {
+    btn.disabled = true;
+    btn.title = "この端末は音声入力に対応していません";
+    return;
+  }
+  let recognition = null;
+  btn.addEventListener("mousedown", e => e.preventDefault()); // カーソル位置を保持
+  btn.addEventListener("click", () => {
+    if (recognition) { recognition.stop(); return; } // 録音中なら停止トグル
+    const target = document.getElementById(targetId);
+    target.focus();
+    recognition = new Recognition();
+    recognition.lang = btn.dataset.lang; // 表面=en-US、裏面=ja-JP を正確に認識させる
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => { btn.classList.add("recording"); btn.textContent = "🎤 聞き取り中…"; };
+    recognition.onresult = e => {
+      const transcript = e.results[0][0].transcript;
+      if (document.activeElement !== target) target.focus();
+      if (!document.execCommand("insertText", false, transcript)) {
+        target.appendChild(document.createTextNode((target.textContent ? " " : "") + transcript));
+      }
+    };
+    recognition.onerror = e => {
+      const messages = {
+        "not-allowed": "マイクの使用が許可されていません。ブラウザの設定を確認してください",
+        "no-speech": "音声が聞き取れませんでした。もう一度お試しください",
+        "network": "通信エラーが発生しました",
+      };
+      toast(messages[e.error] || "音声入力でエラーが発生しました");
+    };
+    recognition.onend = () => {
+      btn.classList.remove("recording");
+      btn.textContent = label;
+      recognition = null;
+    };
+    recognition.start();
+  });
+}
+setupDictation($("#btn-mic-front"));
+setupDictation($("#btn-mic-back"));
 
 /* 保存するHTMLを b/strong/u/i/em/br/div/span のみに制限 */
 function sanitize(html) {
