@@ -333,7 +333,7 @@ function renderDeckUI() {
     optionsHtml(names, currentDeck) +
     "<option value='" + ALL_DECKS + "'" + (currentDeck === ALL_DECKS ? " selected" : "") + ">すべてのデッキ</option>";
   const locked = currentDeck === ALL_DECKS || currentDeck === DEFAULT_DECK;
-  $("#btn-deck-rename").disabled = locked;
+  $("#btn-deck-rename").disabled = currentDeck === ALL_DECKS;
   $("#btn-deck-delete").disabled = locked;
   // 追加・編集フォームのデッキ欄（編集中は編集対象カードのデッキを保持する）
   if (!names.includes(formDeckValue)) formDeckValue = formDeck();
@@ -364,7 +364,7 @@ $("#btn-deck-new").addEventListener("click", () => {
   toast("デッキ「" + name + "」を作成しました");
 });
 $("#btn-deck-rename").addEventListener("click", async () => {
-  if (currentDeck === ALL_DECKS || currentDeck === DEFAULT_DECK) return;
+  if (currentDeck === ALL_DECKS) return;
   const old = currentDeck;
   const name = (prompt("新しいデッキ名を入力してください", old) || "").trim();
   if (!name || name === old) return;
