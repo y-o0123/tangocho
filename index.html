@@ -18,6 +18,17 @@
   nav button{background:rgba(255,255,255,.15); border:none; color:#fff; padding:8px 16px; border-radius:8px; font-size:.95rem; cursor:pointer;}
   nav button.active{background:#fff; color:#1b3a6b; font-weight:600;}
   main{max-width:860px; margin:0 auto; padding:20px 16px 60px;}
+
+  /* ===== デッキ切り替えバー ===== */
+  .deckbar{background:var(--card); border-bottom:1px solid var(--border);}
+  .deckbar-inner{max-width:860px; margin:0 auto; padding:10px 16px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .deckbar label{font-size:.85rem; font-weight:600; color:var(--sub);}
+  .deckbar select{border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:.92rem; background:#fff; color:var(--ink); min-width:150px; max-width:100%;}
+  .deck-btn{border:1px solid var(--border); background:#fff; color:var(--sub); border-radius:7px; padding:6px 10px; cursor:pointer; font-size:.82rem;}
+  .deck-btn:hover{background:#f0f2f5;}
+  .deck-btn.primary{color:var(--accent); border-color:var(--accent);}
+  .deck-btn:disabled{opacity:.4; cursor:default;}
+  .deck-btn:disabled:hover{background:#fff;}
   .view{display:none;}
   .view.active{display:block;}
   .panel{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:22px; box-shadow:0 1px 3px rgba(0,0,0,.06);}
@@ -94,6 +105,16 @@
   </nav>
 </header>
 
+<div class="deckbar">
+  <div class="deckbar-inner">
+    <label for="deck-select">デッキ</label>
+    <select id="deck-select"></select>
+    <button class="deck-btn primary" id="btn-deck-new">＋ 新しいデッキ</button>
+    <button class="deck-btn" id="btn-deck-rename">デッキ名を変更</button>
+    <button class="deck-btn" id="btn-deck-delete">デッキを削除</button>
+  </div>
+</div>
+
 <main>
   <!-- 学習 -->
   <section id="view-study" class="view active">
@@ -110,6 +131,10 @@
   <section id="view-add" class="view">
     <div class="panel">
       <h2 id="form-title" style="font-size:1.05rem; margin-bottom:18px;">カードを追加</h2>
+      <div class="form-group">
+        <label for="in-deck">デッキ</label>
+        <select id="in-deck" style="border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:.95rem; background:#fff; color:var(--ink); min-width:180px;"></select>
+      </div>
       <div class="form-group">
         <label>表面（英単語・例文）</label>
         <div class="editor-toolbar" data-target="in-front">
@@ -260,6 +285,122 @@ let pendingImage = null;
 
 const $ = s => document.querySelector(s);
 
+/* ---------- デッキ ---------- */
+const DEFAULT_DECK = "デフォルト";
+const ALL_DECKS = "__all__";                 // 「すべてのデッキ」を表す内部値
+const LS_DECK = "tangocho.currentDeck";      // 選択中のデッキ
+const LS_DECKS = "tangocho.decks";           // 空のデッキも覚えておくための一覧
+let savedDecks = [];
+let currentDeck = DEFAULT_DECK;
+let formDeckValue = DEFAULT_DECK;   // 追加・編集フォームのデッキ欄が指すデッキ
+
+function loadDeckState() {
+  try { savedDecks = JSON.parse(localStorage.getItem(LS_DECKS) || "[]"); } catch { savedDecks = []; }
+  if (!Array.isArray(savedDecks)) savedDecks = [];
+  currentDeck = localStorage.getItem(LS_DECK) || DEFAULT_DECK;
+}
+function saveDeckState() {
+  localStorage.setItem(LS_DECKS, JSON.stringify(savedDecks));
+  localStorage.setItem(LS_DECK, currentDeck);
+}
+function deckOf(c) { return c.deck || DEFAULT_DECK; }
+/* デッキ名一覧＝「デフォルト」＋作成済みの空デッキ＋カードが持つデッキ名 */
+function allDecks() {
+  const set = new Set([DEFAULT_DECK]);
+  savedDecks.forEach(d => set.add(d));
+  cards.forEach(c => set.add(deckOf(c)));
+  return [...set].sort((a, b) =>
+    a === DEFAULT_DECK ? -1 : b === DEFAULT_DECK ? 1 : a.localeCompare(b, "ja"));
+}
+/* 現在のデッキの対象カード（「すべてのデッキ」なら全件） */
+function deckCards() {
+  return currentDeck === ALL_DECKS ? cards : cards.filter(c => deckOf(c) === currentDeck);
+}
+/* 追加・編集フォームで使う既定のデッキ */
+function formDeck() {
+  return currentDeck === ALL_DECKS ? DEFAULT_DECK : currentDeck;
+}
+function optionsHtml(names, selected) {
+  return names.map(d =>
+    "<option value='" + esc(d) + "'" + (d === selected ? " selected" : "") + ">" + esc(d) + "</option>"
+  ).join("");
+}
+function renderDeckUI() {
+  const names = allDecks();
+  savedDecks = names.filter(d => d !== DEFAULT_DECK);  // カード由来のデッキ名も一覧として覚えておく
+  if (currentDeck !== ALL_DECKS && !names.includes(currentDeck)) currentDeck = DEFAULT_DECK;
+  $("#deck-select").innerHTML =
+    optionsHtml(names, currentDeck) +
+    "<option value='" + ALL_DECKS + "'" + (currentDeck === ALL_DECKS ? " selected" : "") + ">すべてのデッキ</option>";
+  const locked = currentDeck === ALL_DECKS || currentDeck === DEFAULT_DECK;
+  $("#btn-deck-rename").disabled = locked;
+  $("#btn-deck-delete").disabled = locked;
+  // 追加・編集フォームのデッキ欄（編集中は編集対象カードのデッキを保持する）
+  if (!names.includes(formDeckValue)) formDeckValue = formDeck();
+  $("#in-deck").innerHTML = optionsHtml(names, formDeckValue);
+  saveDeckState();
+}
+function refreshCurrentView() {
+  if ($("#view-study").classList.contains("active")) renderStudy();
+  else if ($("#view-list").classList.contains("active")) renderList();
+}
+$("#in-deck").addEventListener("change", e => { formDeckValue = e.target.value; });
+$("#deck-select").addEventListener("change", e => {
+  currentDeck = e.target.value;
+  if (!editingId) formDeckValue = formDeck();
+  renderDeckUI();
+  refreshCurrentView();
+});
+$("#btn-deck-new").addEventListener("click", () => {
+  const name = (prompt("新しいデッキの名前を入力してください") || "").trim();
+  if (!name) return;
+  if (name === ALL_DECKS) { toast("この名前は使用できません"); return; }
+  if (allDecks().includes(name)) { toast("同じ名前のデッキがすでにあります"); return; }
+  savedDecks.push(name);
+  currentDeck = name;
+  if (!editingId) formDeckValue = name;
+  renderDeckUI();
+  refreshCurrentView();
+  toast("デッキ「" + name + "」を作成しました");
+});
+$("#btn-deck-rename").addEventListener("click", async () => {
+  if (currentDeck === ALL_DECKS || currentDeck === DEFAULT_DECK) return;
+  const old = currentDeck;
+  const name = (prompt("新しいデッキ名を入力してください", old) || "").trim();
+  if (!name || name === old) return;
+  if (name === ALL_DECKS) { toast("この名前は使用できません"); return; }
+  if (allDecks().includes(name)) { toast("同じ名前のデッキがすでにあります"); return; }
+  for (const c of cards) {
+    if (deckOf(c) === old) { c.deck = name; await putCard(c); }
+  }
+  savedDecks = savedDecks.filter(d => d !== old);
+  savedDecks.push(name);
+  currentDeck = name;
+  if (formDeckValue === old) formDeckValue = name;
+  renderDeckUI();
+  refreshCurrentView();
+  toast("デッキ名を「" + name + "」に変更しました");
+});
+$("#btn-deck-delete").addEventListener("click", async () => {
+  if (currentDeck === ALL_DECKS) { toast("「すべてのデッキ」は削除できません"); return; }
+  if (currentDeck === DEFAULT_DECK) { toast("「デフォルト」デッキは削除できません"); return; }
+  const target = currentDeck;
+  const inDeck = cards.filter(c => deckOf(c) === target);
+  const msg = inDeck.length
+    ? "デッキ「" + target + "」を削除します。\n" + inDeck.length + " 件のカードも削除されます。よろしいですか？"
+    : "デッキ「" + target + "」を削除しますか？";
+  if (!confirm(msg)) return;
+  for (const c of inDeck) await removeCard(c.id);
+  cards = cards.filter(c => deckOf(c) !== target);
+  savedDecks = savedDecks.filter(d => d !== target);
+  currentDeck = DEFAULT_DECK;
+  if (editingId && !cards.some(c => c.id === editingId)) { editingId = null; resetForm(); }
+  if (!editingId) formDeckValue = formDeck();
+  renderDeckUI();
+  refreshCurrentView();
+  toast("デッキ「" + target + "」を削除しました");
+});
+
 /* ---------- ナビゲーション ---------- */
 document.querySelectorAll("nav button").forEach(btn => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
@@ -269,20 +410,20 @@ function showView(name) {
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
   if (name === "study") renderStudy();
   if (name === "list")  renderList();
-  if (name === "add" && !editingId) resetForm();
+  if (name === "add" && !editingId) { formDeckValue = formDeck(); resetForm(); }
 }
 
 /* ---------- 学習 ---------- */
 function buildQueue() {
   const now = Date.now();
-  const due = cards.filter(c => (c.due || 0) <= now);
+  const due = deckCards().filter(c => (c.due || 0) <= now);
   const order = { learning: 0, relearning: 0, review: 1, new: 2 };
   due.sort((a, b) => (order[a.state] - order[b.state]) || ((a.due || 0) - (b.due || 0)));
   return due;
 }
 function updateStats() {
   const now = Date.now();
-  const d = cards.filter(c => (c.due || 0) <= now);
+  const d = deckCards().filter(c => (c.due || 0) <= now);
   $("#stat-new").textContent      = d.filter(c => c.state === "new").length;
   $("#stat-learning").textContent = d.filter(c => c.state === "learning" || c.state === "relearning").length;
   $("#stat-review").textContent   = d.filter(c => c.state === "review").length;
@@ -294,11 +435,14 @@ function renderStudy() {
   currentCard = queue[0] || null;
 
   if (!currentCard) {
-    const future = cards.filter(c => c.due).sort((a, b) => a.due - b.due)[0];
-    let msg = cards.length === 0
-      ? "カードがまだありません。<br>「追加」タブから最初のカードを作りましょう 📝"
+    const pool = deckCards();
+    const future = pool.filter(c => c.due).sort((a, b) => a.due - b.due)[0];
+    let msg = pool.length === 0
+      ? (currentDeck === ALL_DECKS || cards.length === 0
+          ? "カードがまだありません。<br>「追加」タブから最初のカードを作りましょう 📝"
+          : "このデッキにはまだカードがありません。<br>「追加」タブからカードを作りましょう 📝")
       : "🎉 今の学習はすべて完了しました！";
-    if (future && cards.length > 0) {
+    if (future && pool.length > 0) {
       msg += "<br><span style='font-size:.88rem;'>次の復習: " +
              new Date(future.due).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) +
              "（あと " + fmtDelta(future.due - Date.now()) + "）</span>";
@@ -468,16 +612,19 @@ $("#btn-save").addEventListener("click", async () => {
   const back  = sanitize($("#in-back").innerHTML);
   if (!textOf(front) || !textOf(back)) { toast("表面と裏面を入力してください"); return; }
 
+  const deck = $("#in-deck").value || formDeck();
+
   if (editingId) {
     const i = cards.findIndex(c => c.id === editingId);
-    const updated = { ...cards[i], front, back, image: pendingImage, v2: true };
+    const updated = { ...cards[i], front, back, image: pendingImage, deck, v2: true, v3: true };
     await putCard(updated); cards[i] = updated;
     toast("カードを更新しました");
     editingId = null;
+    renderDeckUI();
     showView("list");
   } else {
     const card = {
-      id: crypto.randomUUID(), front, back, image: pendingImage, v2: true,
+      id: crypto.randomUUID(), front, back, image: pendingImage, deck, v2: true, v3: true,
       state: "new", step: 0, ease: 2.5, interval: 0,
       due: Date.now(), reps: 0, lapses: 0, created: Date.now()
     };
@@ -487,9 +634,11 @@ $("#btn-save").addEventListener("click", async () => {
     $("#in-front").focus();
   }
 });
-$("#btn-cancel").addEventListener("click", () => { editingId = null; resetForm(); showView("list"); });
+$("#btn-cancel").addEventListener("click", () => { editingId = null; formDeckValue = formDeck(); resetForm(); showView("list"); });
 function resetForm() {
   $("#form-title").textContent = "カードを追加";
+  if (!allDecks().includes(formDeckValue)) formDeckValue = formDeck();
+  $("#in-deck").value = formDeckValue;
   $("#in-front").innerHTML = ""; $("#in-back").innerHTML = "";
   pendingImage = null;
   $("#img-drop").classList.remove("has-img");
@@ -502,6 +651,8 @@ function editCard(id) {
   editingId = id;
   showView("add");
   $("#form-title").textContent = "カードを編集";
+  formDeckValue = deckOf(c);
+  $("#in-deck").value = formDeckValue;
   $("#in-front").innerHTML = c.front; $("#in-back").innerHTML = c.back;
   pendingImage = c.image || null;
   if (c.image) {
@@ -516,11 +667,12 @@ $("#search").addEventListener("input", renderList);
 function renderList() {
   const q = $("#search").value.trim().toLowerCase();
   const list = $("#card-list");
-  const shown = cards
+  const pool = deckCards();
+  const shown = pool
     .filter(c => !q || textOf(c.front).toLowerCase().includes(q) || textOf(c.back).toLowerCase().includes(q))
     .sort((a, b) => b.created - a.created);
   if (shown.length === 0) {
-    list.innerHTML = "<div class='empty'>" + (cards.length ? "該当するカードがありません" : "カードがまだありません") + "</div>";
+    list.innerHTML = "<div class='empty'>" + (pool.length ? "該当するカードがありません" : "カードがまだありません") + "</div>";
     return;
   }
   const stateJa = { new: "新規", learning: "学習中", review: "復習", relearning: "再学習" };
@@ -529,7 +681,8 @@ function renderList() {
       (c.image ? "<img class='card-thumb' src='" + c.image + "'>" : "<div class='card-thumb'></div>") +
       "<div class='card-texts'><div class='f'>" + c.front + "</div><div class='b'>" + c.back + "</div></div>" +
       "<div class='card-meta'><span class='badge bg-" + c.state + "'>" + stateJa[c.state] + "</span><br>" +
-        (c.due ? "次回: " + new Date(c.due).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }) : "") + "</div>" +
+        (c.due ? "次回: " + new Date(c.due).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }) : "") +
+        (currentDeck === ALL_DECKS ? "<br>" + esc(deckOf(c)) : "") + "</div>" +
       "<button class='row-btn' onclick='editCard(\"" + c.id + "\")'>編集</button>" +
       "<button class='row-btn' onclick='delCard(\"" + c.id + "\")'>削除</button>" +
     "</div>").join("");
@@ -538,6 +691,7 @@ async function delCard(id) {
   if (!confirm("このカードを削除しますか？")) return;
   await removeCard(id);
   cards = cards.filter(c => c.id !== id);
+  renderDeckUI();
   renderList();
   toast("削除しました");
 }
@@ -562,9 +716,11 @@ $("#import-file").addEventListener("change", async e => {
     for (const c of imported) {
       if (!c.id || !c.front) continue;
       if (!c.v2) { c.front = esc(c.front); c.back = esc(c.back); c.v2 = true; } // 旧形式の変換
+      if (!c.v3) { c.deck = c.deck || DEFAULT_DECK; c.v3 = true; }              // デッキ未指定の補完
       if (!cards.some(x => x.id === c.id)) { await putCard(c); cards.push(c); added++; }
     }
     toast(added + " 件のカードを取り込みました");
+    renderDeckUI();
     renderList();
   } catch { toast("読み込みに失敗しました（JSON形式のバックアップを選んでください）"); }
   e.target.value = "";
@@ -608,12 +764,19 @@ function toast(msg) {
 }
 
 /* ---------- 起動 ---------- */
+loadDeckState();
 openDB().then(async () => {
   cards = await getAllCards();
   // 旧形式（プレーンテキスト）のカードをHTML形式に変換
   for (const c of cards) {
     if (!c.v2) { c.front = esc(c.front); c.back = esc(c.back); c.v2 = true; await putCard(c); }
   }
+  // デッキ未対応のカードに「デフォルト」デッキを付与
+  for (const c of cards) {
+    if (!c.v3) { c.deck = c.deck || DEFAULT_DECK; c.v3 = true; await putCard(c); }
+  }
+  formDeckValue = formDeck();
+  renderDeckUI();
   renderStudy();
 });
 </script>
